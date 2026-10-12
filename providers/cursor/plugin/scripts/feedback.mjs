@@ -96,7 +96,7 @@ export function completedAgentWorkMentionsStripe(event) {
 }
 
 export function getStripeSkillName(event, argumentsValue) {
-  // This checks the if the SKILL.md file for the stripe skill was read
+  // This checks if the SKILL.md file for the stripe skill was read
   const skillFilepath = (argumentsValue?.file_path ?? '').replace(/\\/g, '/');
   const isStripeSkill = skillFilepath.includes("stripe") && skillFilepath.includes("SKILL.md");
   const skillName = skillFilepath.split("/").at(-2);
