@@ -51,7 +51,7 @@ function valueContains(value, expected) {
   return false;
 }
 
-function hookExecutionsFromLogs(startedAt) {
+function getAllHookExecutionsFromLogs(startedAt) {
   const uid = typeof process.getuid === 'function' ? process.getuid() : 'default';
   const logDir = join(tmpdir(), `cursor-agent-logs-${uid}`);
   if (!existsSync(logDir)) {
@@ -136,7 +136,7 @@ describe('Stripe feedback hooks', { timeout: 120_000 }, () => {
       },
     );
 
-    hookExecutions = hookExecutionsFromLogs(startedAt);
+    hookExecutions = getAllHookExecutionsFromLogs(startedAt);
 
     assert.ifError(result.error);
     assert.equal(
