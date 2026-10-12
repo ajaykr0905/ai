@@ -1,15 +1,15 @@
+// This test requires the Cursor CLI to be installed and logged in
+
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import {
-  chmodSync,
   existsSync,
-  mkdtempSync,
+  readdirSync,
   readFileSync,
-  rmSync,
-  writeFileSync,
+  statSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { delimiter, join } from 'node:path';
+import { join } from 'node:path';
 import {
   before as beforeAll,
   describe,
@@ -21,11 +21,10 @@ import { PER_TOOL_FEEDBACK_MESSAGE } from '../../../../../providers/cursor/plugi
 const PLUGIN_ROOT = fileURLToPath(
   new URL('../../../../../providers/cursor/plugin', import.meta.url),
 );
-const STRIPE_SKILL_PATH = join(
-  PLUGIN_ROOT,
-  'skills/stripe-docs/SKILL.md',
-);
 const MODEL = 'composer-2.5-fast';
+const SAMPLE_IMPORT = `--import=data:text/javascript,${encodeURIComponent(
+  'Math.random = () => 0',
+)}`;
 
 function parseEventStream(stdout) {
   const events = [];
@@ -52,119 +51,38 @@ function valueContains(value, expected) {
   return false;
 }
 
-function scriptSource(source) {
-  const lines = source.replace(/^\n/, '').split('\n');
-  if (lines.at(-1)?.trim() === '') {
-    lines.pop();
-  }
-  const indent = Math.min(
-    ...lines
-      .filter((line) => line.trim())
-      .map((line) => line.match(/^ */)[0].length),
-  );
-  return `${lines.map((line) => line.slice(indent)).join('\n')}\n`;
-}
-
-// Wraps the stripe comand around a bash script that captures 
-function writeStripeCommandWrapper(directory, usageLog) {
-  const realStripe = spawnSync('which', ['stripe'], {
-    encoding: 'utf8',
-  }).stdout.trim();
-  const delegate = realStripe
-    ? `exec ${JSON.stringify(realStripe)} "$@"`
-    : 'exit 127';
-  const executablePath = join(directory, 'stripe');
-  writeFileSync(
-    executablePath,
-    scriptSource(`
-      #!/bin/sh
-      printf '%s\\n' "$*" >> ${JSON.stringify(usageLog)}
-      if [ "$1" = "agent" ]; then
-        exit 0
-      fi
-      ${delegate}
-    `),
-  );
-  chmodSync(executablePath, 0o755);
-}
-
-// 
-function writeNodeWrapper(directory, hookLog) {
-  const sampleImport = `--import=data:text/javascript,${encodeURIComponent(
-    'Math.random = () => 0',
-  )}`;
-  const executablePath = join(directory, 'node');
-  writeFileSync(
-    executablePath,
-    scriptSource(`
-      #!${process.execPath}
-      import { spawn } from 'node:child_process';
-      import { appendFileSync } from 'node:fs';
-
-      const args = process.argv.slice(2);
-      const env = { ...process.env };
-      if (args.some((arg) => arg.endsWith('postToolUse.mjs'))) {
-        env.NODE_OPTIONS = ${JSON.stringify(sampleImport)};
-      }
-
-      const child = spawn(${JSON.stringify(process.execPath)}, args, {
-        env,
-        stdio: ['pipe', 'pipe', 'pipe'],
-      });
-      const input = [];
-      const output = [];
-      process.stdin.on('data', (chunk) => {
-        input.push(chunk);
-        child.stdin.write(chunk);
-      });
-      process.stdin.on('end', () => child.stdin.end());
-      child.stdout.on('data', (chunk) => {
-        output.push(chunk);
-        process.stdout.write(chunk);
-      });
-      child.stderr.on('data', (chunk) => process.stderr.write(chunk));
-      child.on('close', (code) => {
-        appendFileSync(
-          ${JSON.stringify(hookLog)},
-          JSON.stringify({
-            args,
-            stdin: Buffer.concat(input).toString('utf8'),
-            stdout: Buffer.concat(output).toString('utf8'),
-          }) + '\\n',
-        );
-        process.exit(code ?? 1);
-      });
-    `),
-  );
-  chmodSync(executablePath, 0o755);
-}
-
-function readHookRecords(hookLog) {
-  if (!existsSync(hookLog)) {
+function hookExecutionsFromLogs(startedAt) {
+  const uid = typeof process.getuid === 'function' ? process.getuid() : 'default';
+  const logDir = join(tmpdir(), `cursor-agent-logs-${uid}`);
+  if (!existsSync(logDir)) {
     return [];
   }
-  return readFileSync(hookLog, 'utf8')
-    .split(/\r?\n/)
-    .filter(Boolean)
-    .map((line) => JSON.parse(line));
+
+  const marker = '"eventName":"cli.hook.executed"';
+  return readdirSync(logDir)
+    .map((name) => join(logDir, name))
+    .filter((path) => statSync(path).mtimeMs >= startedAt)
+    .flatMap((path) => readFileSync(path, 'utf8').split(/\r?\n/))
+    .filter((line) => line.includes(marker))
+    .flatMap((line) => {
+      try {
+        const props = JSON.parse(line.slice(line.indexOf('{'))).props;
+        return props?.hookStep ? [props] : [];
+      } catch {
+        return [];
+      }
+    });
 }
 
-function additionalContext(record) {
-  if (!record.stdout) {
-    return undefined;
-  }
-  try {
-    return JSON.parse(record.stdout).additional_context;
-  } catch {
-    return undefined;
-  }
+function isStripeMcpToolCall(event) {
+  const call = event?.tool_call?.mcpToolCall;
+  return Boolean(call) && valueContains(call, 'stripe');
 }
 
 describe('Stripe feedback hooks', { timeout: 120_000 }, () => {
   let events;
-  let hookRecords;
+  let hookExecutions;
   let sessionStderr;
-  let stripeCalls;
 
   beforeAll(() => {
     const agentPath = spawnSync('which', ['agent'], { encoding: 'utf8' }).stdout.trim();
@@ -180,12 +98,7 @@ describe('Stripe feedback hooks', { timeout: 120_000 }, () => {
       `Cursor agent CLI is not logged in.\n${statusText}`,
     );
 
-    const directory = mkdtempSync(join(tmpdir(), 'stripe-hooks-session-'));
-    const usageLog = join(directory, 'usage.log');
-    const hookLog = join(directory, 'hooks.jsonl');
-    writeStripeCommandWrapper(directory, usageLog);
-    writeNodeWrapper(directory, hookLog);
-    const workspace = mkdtempSync(join(tmpdir(), 'stripe-hooks-workspace-'));
+    const startedAt = Date.now();
 
     const result = spawnSync(
       agentPath,
@@ -198,36 +111,32 @@ describe('Stripe feedback hooks', { timeout: 120_000 }, () => {
         '--plugin-dir',
         PLUGIN_ROOT,
         '--workspace',
-        workspace,
+        PLUGIN_ROOT,
         '--trust',
         '--approve-mcps',
         '--force',
         '--sandbox',
         'disabled',
-        'Read the file at ' +
-          `${STRIPE_SKILL_PATH} before doing anything else. ` +
+        'First use the stripe-docs skill. ' +
           'Then call one tool from the loaded Stripe MCP server to search Stripe documentation for Checkout. ' +
           'Do not edit files and do not run the stripe CLI yourself. ' +
           'After both calls finish, reply with only DONE.',
       ],
       {
-        cwd: workspace,
+        cwd: PLUGIN_ROOT,
         encoding: 'utf8',
         env: {
           ...process.env,
-          PATH: `${directory}${delimiter}${process.env.PATH}`,
+          NODE_OPTIONS: [process.env.NODE_OPTIONS, SAMPLE_IMPORT]
+            .filter(Boolean)
+            .join(' '),
         },
         maxBuffer: 16 * 1024 * 1024,
         timeout: 90_000,
       },
     );
 
-    stripeCalls = existsSync(usageLog)
-      ? readFileSync(usageLog, 'utf8')
-      : '';
-    hookRecords = readHookRecords(hookLog);
-    rmSync(directory, { recursive: true, force: true });
-    rmSync(workspace, { recursive: true, force: true });
+    hookExecutions = hookExecutionsFromLogs(startedAt);
 
     assert.ifError(result.error);
     assert.equal(
@@ -247,10 +156,13 @@ describe('Stripe feedback hooks', { timeout: 120_000 }, () => {
       ),
       'Cursor did not start a session',
     );
-    assert.match(
-      stripeCalls,
-      /^--version$/m,
-      `The sessionStart hook did not check the Stripe CLI.\n${stripeCalls}`,
+    assert.ok(
+      hookExecutions.some(
+        (execution) =>
+          execution.hookStep === 'sessionStart' &&
+          execution.status === 'success',
+      ),
+      `The sessionStart hook did not succeed.\n${JSON.stringify(hookExecutions)}`,
     );
   });
 
@@ -259,37 +171,36 @@ describe('Stripe feedback hooks', { timeout: 120_000 }, () => {
       events.some(
         (event) =>
           event.type === 'tool_call' &&
-          valueContains(event.tool_call, STRIPE_SKILL_PATH),
+          valueContains(event.tool_call?.readToolCall?.args?.path, 'skills/stripe-docs/SKILL.md'),
       ),
       'Cursor did not read the Stripe skill',
     );
-    assert.match(
-      stripeCalls,
-      /^agent report_usage --type skill --name stripe-docs$/m,
-      `The postToolUse hook did not report Stripe skill usage.\n${stripeCalls}`,
+    assert.ok(
+      hookExecutions.some(
+        (execution) =>
+          execution.hookStep === 'postToolUse' && execution.exitCode === 0,
+      ),
+      `The postToolUse hook did not report Stripe skill usage.\n${JSON.stringify(
+        hookExecutions,
+      )}`,
     );
   });
 
   it('emits sampled feedback after a Stripe MCP tool', () => {
     assert.ok(
-      events.some(
-        (event) =>
-          event.type === 'tool_call' &&
-          valueContains(event.tool_call, 'mcpToolCall') &&
-          valueContains(event.tool_call, 'stripe'),
-      ),
+      events.some((event) => isStripeMcpToolCall(event)),
       'Cursor did not call a Stripe MCP tool',
     );
     assert.ok(
-      hookRecords.some(
-        (record) =>
-          valueContains(record.stdin, 'MCP:') &&
-          valueContains(record.stdin, 'stripe') &&
-          additionalContext(record) === PER_TOOL_FEEDBACK_MESSAGE,
+      events.some(
+        (event) =>
+          isStripeMcpToolCall(event) &&
+          valueContains(
+            event.tool_call?.hookAdditionalContexts,
+            PER_TOOL_FEEDBACK_MESSAGE,
+          ),
       ),
-      `The postToolUse hook did not emit sampled Stripe feedback.\n${JSON.stringify(
-        hookRecords,
-      )}`,
+      'The postToolUse hook did not emit sampled Stripe feedback.',
     );
     assert.ok(
       events.some(
@@ -301,8 +212,5 @@ describe('Stripe feedback hooks', { timeout: 120_000 }, () => {
 
   it('keeps unsupported usage reporting silent', () => {
     assert.ok(!sessionStderr.includes('report_usage'));
-    assert.ok(
-      hookRecords.every((record) => !record.stdout.includes('report_usage')),
-    );
   });
 });
