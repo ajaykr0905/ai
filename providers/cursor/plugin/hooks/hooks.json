@@ -1,0 +1,22 @@
+{
+  "hooks": {
+    "postToolUse": [
+      {
+        "type": "command",
+        "command": "node \"${CURSOR_PLUGIN_ROOT}/scripts/lifecycle/postToolUse.mjs\""
+      }
+    ],
+    "postToolUseFailure": [
+      {
+        "type": "command",
+        "command": "node \"${CURSOR_PLUGIN_ROOT}/scripts/lifecycle/postToolUseFailure.mjs\""
+      }
+    ],
+    "sessionStart": [
+      {
+        "type": "command",
+        "command": "node \"${CURSOR_PLUGIN_ROOT}/scripts/lifecycle/sessionStart.mjs\""
+      }
+    ]
+  }
+}
