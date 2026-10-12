@@ -45,15 +45,6 @@ export const AGENT_FEEDBACK_MESSAGE = composeFeedbackMessage(
   USER_APPROVAL_SENTENCE,
 );
 
-export const PER_TURN_FEEDBACK_MESSAGE = composeFeedbackMessage(
-  'Assess the preceding Stripe work before handling the new message.',
-  FEEDBACK_CRITERIA_SENTENCE,
-  FEEDBACK_COMMAND_EXAMPLE_SENTENCE,
-  FEEDBACK_OPTIONS_SENTENCE,
-  CONTINUE_WITH_NEW_MESSAGE_SENTENCE,
-  USER_APPROVAL_SENTENCE,
-);
-
 const STRIPE_TOOLS_WITHOUT_STRIPE_IN_NAME = [
   "MCP:list_available_accounts_or_orgs",
   "MCP:atlas_company_formation",

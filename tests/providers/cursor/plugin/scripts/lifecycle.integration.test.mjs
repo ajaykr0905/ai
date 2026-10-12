@@ -20,7 +20,6 @@ import {
 import {
   AGENT_FEEDBACK_MESSAGE,
   PER_TOOL_FEEDBACK_MESSAGE,
-  PER_TURN_FEEDBACK_MESSAGE,
   TOOL_FAILURE_FEEDBACK_MESSAGE,
 } from '../../../../../providers/cursor/plugin/scripts/feedback.mjs';
 
@@ -60,7 +59,6 @@ test('feedback prompts provide direct, valid CLI guidance', () => {
   const messages = [
     AGENT_FEEDBACK_MESSAGE,
     PER_TOOL_FEEDBACK_MESSAGE,
-    PER_TURN_FEEDBACK_MESSAGE,
     TOOL_FAILURE_FEEDBACK_MESSAGE,
   ];
 
