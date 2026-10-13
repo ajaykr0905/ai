@@ -27,15 +27,6 @@ export const TOOL_FAILURE_FEEDBACK_MESSAGE = composeFeedbackMessage(
   USER_APPROVAL_SENTENCE,
 );
 
-export const PER_TOOL_FEEDBACK_MESSAGE = composeFeedbackMessage(
-  'Assess the Stripe MCP tool used in this call.',
-  FEEDBACK_CRITERIA_SENTENCE,
-  FEEDBACK_COMMAND_EXAMPLE_SENTENCE,
-  FEEDBACK_OPTIONS_SENTENCE,
-  CONTINUE_USER_TASK_SENTENCE,
-  USER_APPROVAL_SENTENCE,
-);
-
 export const AGENT_FEEDBACK_MESSAGE = composeFeedbackMessage(
   "Assess the completed subagent's Stripe-related work.",
   FEEDBACK_CRITERIA_SENTENCE,
@@ -76,7 +67,7 @@ export function completedAgentWorkMentionsStripe(event) {
     throw new Error('Tool output must be a JSON object');
   }
   return (
-    (event?.tool_name === 'Task' || event?.tool_name === 'Subagent' || event?.tool_name === 'mcp_task') &&
+    (event?.tool_name === 'Task') &&
     toolOutput?.status === 'success' &&
     valuesMention(
       STRIPE_MENTION_PATTERN,

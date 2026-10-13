@@ -19,7 +19,6 @@ import {
 } from '../../../../../providers/cursor/plugin/scripts/cli.mjs';
 import {
   AGENT_FEEDBACK_MESSAGE,
-  PER_TOOL_FEEDBACK_MESSAGE,
   TOOL_FAILURE_FEEDBACK_MESSAGE,
 } from '../../../../../providers/cursor/plugin/scripts/feedback.mjs';
 
@@ -58,7 +57,6 @@ function writeExecutable(directory, name, contents) {
 test('feedback prompts provide direct, valid CLI guidance', () => {
   const messages = [
     AGENT_FEEDBACK_MESSAGE,
-    PER_TOOL_FEEDBACK_MESSAGE,
     TOOL_FAILURE_FEEDBACK_MESSAGE,
   ];
 
@@ -203,31 +201,6 @@ test('postToolUseFailure always asks about failed Stripe MCP tools', () => {
   assert.equal(result.status, 0);
   assert.deepEqual(JSON.parse(result.stdout), {
     additional_context: TOOL_FAILURE_FEEDBACK_MESSAGE,
-  });
-});
-
-test('sampled postToolUse asks for feedback after a Stripe MCP tool', () => {
-  const result = runLifecycle(
-    'lifecycle/postToolUse.mjs',
-    {
-      duration: 800,
-      hook_event_name: 'postToolUse',
-      tool_input: { query: 'Checkout' },
-      tool_name: 'MCP:search_stripe_documentation',
-      tool_output: JSON.stringify({ content: 'Search results' }),
-      tool_use_id: 'tool_mcp',
-    },
-    {
-      NODE_OPTIONS: `--import=data:text/javascript,${encodeURIComponent(
-        'Math.random = () => 0',
-      )}`,
-    },
-  );
-
-  assert.ifError(result.error);
-  assert.equal(result.status, 0);
-  assert.deepEqual(JSON.parse(result.stdout), {
-    additional_context: PER_TOOL_FEEDBACK_MESSAGE,
   });
 });
 

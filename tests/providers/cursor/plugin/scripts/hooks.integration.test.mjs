@@ -16,7 +16,7 @@ import {
   it,
 } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { PER_TOOL_FEEDBACK_MESSAGE } from '../../../../../providers/cursor/plugin/scripts/feedback.mjs';
+import { AGENT_FEEDBACK_MESSAGE } from '../../../../../providers/cursor/plugin/scripts/feedback.mjs';
 
 const PLUGIN_ROOT = fileURLToPath(
   new URL('../../../../../providers/cursor/plugin', import.meta.url),
@@ -74,8 +74,8 @@ function getAllHookExecutionsFromLogs(startedAt) {
     });
 }
 
-function isStripeMcpToolCall(event) {
-  const call = event?.tool_call?.mcpToolCall;
+function isStripeSubagentCall(event) {
+  const call = event?.tool_call?.taskToolCall;
   return Boolean(call) && valueContains(call, 'stripe');
 }
 
@@ -118,7 +118,7 @@ describe('Stripe feedback hooks', { timeout: 120_000 }, () => {
         '--sandbox',
         'disabled',
         'First use the stripe-docs skill. ' +
-          'Then call one tool from the loaded Stripe MCP server to search Stripe documentation for Checkout. ' +
+          'Then launch a subagent whose task is to call one tool from the loaded Stripe MCP server to search Stripe documentation for Checkout. ' +
           'Do not edit files and do not run the stripe CLI yourself. ' +
           'After both calls finish, reply with only DONE.',
       ],
@@ -186,21 +186,21 @@ describe('Stripe feedback hooks', { timeout: 120_000 }, () => {
     );
   });
 
-  it('emits sampled feedback after a Stripe MCP tool', () => {
+  it('emits sampled feedback after a subagent completes Stripe work', () => {
     assert.ok(
-      events.some((event) => isStripeMcpToolCall(event)),
-      'Cursor did not call a Stripe MCP tool',
+      events.some((event) => isStripeSubagentCall(event)),
+      'Cursor did not finish a Stripe subagent',
     );
     assert.ok(
       events.some(
         (event) =>
-          isStripeMcpToolCall(event) &&
+          isStripeSubagentCall(event) &&
           valueContains(
             event.tool_call?.hookAdditionalContexts,
-            PER_TOOL_FEEDBACK_MESSAGE,
+            AGENT_FEEDBACK_MESSAGE,
           ),
       ),
-      'The postToolUse hook did not emit sampled Stripe feedback.',
+      'The postToolUse hook did not emit sampled feedback for the Stripe subagent.',
     );
     assert.ok(
       events.some(
