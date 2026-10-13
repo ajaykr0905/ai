@@ -67,7 +67,7 @@ export function completedAgentWorkMentionsStripe(event) {
     throw new Error('Tool output must be a JSON object');
   }
   return (
-    (event?.tool_name === 'Task') &&
+    (event?.tool_name === 'Task' || event?.tool_name === 'Subagent' || event?.tool_name === 'mcp_task') &&
     toolOutput?.status === 'success' &&
     valuesMention(
       STRIPE_MENTION_PATTERN,

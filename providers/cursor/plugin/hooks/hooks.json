@@ -4,13 +4,15 @@
     "postToolUse": [
       {
         "type": "command",
-        "command": "node \"${CURSOR_PLUGIN_ROOT}/scripts/lifecycle/postToolUse.mjs\""
+        "command": "node \"${CURSOR_PLUGIN_ROOT}/scripts/lifecycle/postToolUse.mjs\"",
+        "matcher": "Read|Task|Subagent|mcp_task"
       }
     ],
     "postToolUseFailure": [
       {
         "type": "command",
-        "command": "node \"${CURSOR_PLUGIN_ROOT}/scripts/lifecycle/postToolUseFailure.mjs\""
+        "command": "node \"${CURSOR_PLUGIN_ROOT}/scripts/lifecycle/postToolUseFailure.mjs\"",
+        "matcher": "^MCP:(.*stripe|list_available_accounts_or_orgs|atlas_company_formation)$"
       }
     ],
     "sessionStart": [
