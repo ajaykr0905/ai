@@ -87,7 +87,7 @@ function transcriptAssistantReadingSkill(skillPath) {
     message: {
       content: [
         { type: 'text', text: 'Reading the skill.\n\n[REDACTED]' },
-        { type: 'tool_use', name: 'Read', input: { file_path: skillPath } },
+        { type: 'tool_use', name: 'Read', input: { path: skillPath } },
       ],
     },
   };
@@ -112,12 +112,24 @@ echo "unsupported command" >&2
 exit 1
 `;
 
-test('sampled beforeSubmitPrompt reports Stripe Skill usage from the last assistant message', (t) => {
+// Usage reporting runs in a detached child that may outlive the hook, so the
+// log can appear shortly after the hook process exits.
+async function waitForFile(path, timeoutMs = 5_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (!existsSync(path)) {
+    if (Date.now() > deadline) {
+      return false;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  return true;
+}
+
+test('beforeSubmitPrompt reports Stripe Skill usage from the last assistant turn', async (t) => {
   const directory = createBinDirectory(t);
   const usageLog = join(directory, 'usage.log');
   writeExecutable(directory, 'stripe', USAGE_LOGGING_STRIPE_CLI);
   const env = {
-    ...sampledPromptEnv,
     PATH: `${directory}${delimiter}${process.env.PATH}`,
     STRIPE_API_KEY: '',
     STRIPE_USAGE_LOG: usageLog,
@@ -134,7 +146,7 @@ test('sampled beforeSubmitPrompt reports Stripe Skill usage from the last assist
     env,
   );
   assertSilentHook(result);
-  assert.ok(existsSync(usageLog), 'Stripe CLI was not invoked');
+  assert.ok(await waitForFile(usageLog), 'Stripe CLI was not invoked');
   assert.equal(
     readFileSync(usageLog, 'utf8').trim(),
     'agent report_usage --type skill --name stripe-docs',
@@ -410,12 +422,6 @@ exit 1
   assert.equal(registryFailure.status, 0);
   assert.equal(registryFailure.stdout, '');
 });
-
-const sampledPromptEnv = {
-  NODE_OPTIONS: `--import=data:text/javascript,${encodeURIComponent(
-    'Math.random = () => 0',
-  )}`,
-};
 
 function assertSilentHook(result) {
   assert.ifError(result.error);

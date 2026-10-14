@@ -18,7 +18,7 @@
       {
         "type": "command",
         "command": "node \"${CURSOR_PLUGIN_ROOT}/scripts/lifecycle/postToolUseFailure.mjs\"",
-        "matcher": "MCP:(.*stripe|list_available_accounts_or_orgs|atlas_company_formation)"
+        "matcher": "Read|MCP:(.*stripe|list_available_accounts_or_orgs|atlas_company_formation)"
       }
     ],
     "sessionStart": [

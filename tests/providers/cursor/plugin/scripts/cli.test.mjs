@@ -3,7 +3,7 @@ import test from 'node:test';
 import {
   cliLoggedIn,
   getStripeCliGuidance,
-  reportSkillUsageByLastAssistantMessage,
+  reportSkillUsageForToolCalls,
 } from '../../../../../providers/cursor/plugin/scripts/cli.mjs';
 
 function fakeWhoami(status, stdout) {
@@ -57,12 +57,12 @@ test('guidance CLI checks opt out of telemetry without affecting usage reporting
   };
 
   getStripeCliGuidance(run);
-  reportSkillUsageByLastAssistantMessage(
+  reportSkillUsageForToolCalls(
     [
       {
         type: 'tool_use',
         name: 'Read',
-        input: { file_path: '/home/user/.cursor/plugins/stripe/skills/stripe-docs/SKILL.md' },
+        input: { path: '/home/user/.cursor/plugins/stripe/skills/stripe-docs/SKILL.md' },
       },
     ],
     run,

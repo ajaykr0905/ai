@@ -1,4 +1,4 @@
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { CLI_COMMAND_TIMEOUT_MS } from './constants.mjs';
 import { getStripeSkillName } from './feedback.mjs';
 
@@ -22,8 +22,10 @@ const untrackedCommandOptions = {
   env: { ...process.env, STRIPE_CLI_TELEMETRY_OPTOUT: '1' },
 };
 
-const silentCommandOptions = {
-  ...commandOptions,
+// Usage reporting runs in a detached child so the hook returns immediately
+// and never blocks the user's prompt from being submitted.
+const detachedCommandOptions = {
+  detached: true,
   stdio: 'ignore',
 };
 
@@ -51,7 +53,7 @@ function getLatestCliVersion(run) {
     : undefined;
 }
 
-function reportSkillUsage(skillName, run = spawnSync) {
+function reportSkillUsage(skillName, run = spawn) {
   const args = [
     'agent',
     'report_usage',
@@ -65,21 +67,20 @@ function reportSkillUsage(skillName, run = spawnSync) {
     args.push('--api-key', process.env.STRIPE_API_KEY);
   }
   try {
-    run('stripe', args, silentCommandOptions);
+    const child = run('stripe', args, detachedCommandOptions);
+    // Drop the handle so the hook process can exit before the child does.
+    child?.unref?.();
+    child?.on?.('error', () => {});
   } catch {
     // Usage reporting must never affect the agent's work.
   }
 }
 
-// `toolCalls` are transcript `tool_use` blocks: { type, name, input }.
-export function reportSkillUsageByLastAssistantMessage(
-  toolCalls,
-  run = spawnSync,
-) {
+export function reportSkillUsageForToolCalls(toolCalls, run = spawn) {
   for (const toolCall of toolCalls) {
     const stripeSkillName = getStripeSkillName(
       toolCall?.name,
-      toolCall?.input?.file_path,
+      toolCall?.input?.path,
     );
     if (stripeSkillName) {
       reportSkillUsage(stripeSkillName, run);

@@ -35,8 +35,8 @@ export const AGENT_FEEDBACK_MESSAGE = composeFeedbackMessage(
 );
 
 const STRIPE_TOOLS_WITHOUT_STRIPE_IN_NAME = [
-  "MCP:list_available_accounts_or_orgs",
-  "MCP:atlas_company_formation",
+  'MCP:list_available_accounts_or_orgs',
+  'MCP:atlas_company_formation',
 ];
 
 export function composeFeedbackMessage(...sentences) {
@@ -48,12 +48,16 @@ export function isStripeToolCall(event, argumentsValue) {
 
   if (
     typeof toolName === 'string' &&
-    (toolName.startsWith('MCP:') && 
-    (toolName.includes('stripe') || STRIPE_TOOLS_WITHOUT_STRIPE_IN_NAME.includes(toolName)))) {
+    toolName.startsWith('MCP:') &&
+    (toolName.includes('stripe') ||
+      STRIPE_TOOLS_WITHOUT_STRIPE_IN_NAME.includes(toolName))
+  ) {
     return true;
   }
 
-  return getStripeSkillName(event?.tool_name, argumentsValue?.file_path) !== undefined;
+  return (
+    getStripeSkillName(toolName, argumentsValue?.file_path) !== undefined
+  );
 }
 
 // Metronome work often never says "stripe" by name.
@@ -61,11 +65,17 @@ const STRIPE_MENTION_PATTERN = /stripe|metronome/i;
 
 export function completedAgentWorkMentionsStripe(event) {
   const toolOutput = JSON.parse(event.tool_output);
-  if (toolOutput === null || Array.isArray(toolOutput) || typeof toolOutput !== 'object') {
+  if (
+    toolOutput === null ||
+    Array.isArray(toolOutput) ||
+    typeof toolOutput !== 'object'
+  ) {
     throw new Error('Tool output must be a JSON object');
   }
   return (
-    (event?.tool_name === 'Task' || event?.tool_name === 'Subagent' || event?.tool_name === 'mcp_task') &&
+    (event?.tool_name === 'Task' ||
+      event?.tool_name === 'Subagent' ||
+      event?.tool_name === 'mcp_task') &&
     toolOutput?.status === 'success' &&
     valuesMention(
       STRIPE_MENTION_PATTERN,
@@ -78,16 +88,14 @@ export function completedAgentWorkMentionsStripe(event) {
 export function getStripeSkillName(toolName, filePath) {
   // This checks if the SKILL.md file for the stripe skill was read
   const skillFilepath = (filePath ?? '').replace(/\\/g, '/');
-  const isStripeSkill = skillFilepath.includes("stripe") && skillFilepath.includes("SKILL.md");
-  const skillName = skillFilepath.split("/").at(-2);
+  const isStripeSkill =
+    skillFilepath.includes('stripe') && skillFilepath.includes('SKILL.md');
 
-  if (
-    toolName !== 'Read' || !isStripeSkill
-  ) {
+  if (toolName !== 'Read' || !isStripeSkill) {
     return undefined;
   }
 
-  return skillName;
+  return skillFilepath.split('/').at(-2);
 }
 
 function valuesMention(pattern, ...values) {

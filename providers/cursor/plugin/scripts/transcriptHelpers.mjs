@@ -6,11 +6,13 @@ import {
 } from 'node:fs';
 import { TRANSCRIPT_READ_CHUNK_BYTES } from './constants.mjs';
 
-export function lastAssistantMessageToolCalls(event) {
+export function lastAssistantTurnToolCalls(event) {
   const transcriptPath = event?.transcript_path;
   if (typeof transcriptPath !== 'string' || !transcriptPath) {
     return [];
   }
+
+  const toolCalls = [];
 
   for (const line of readLinesFromEnd(transcriptPath)) {
     const entry = parseTranscriptLine(line);
@@ -18,16 +20,17 @@ export function lastAssistantMessageToolCalls(event) {
       continue;
     }
 
-    if (entry.role === 'assistant') {
-      const content = entry.message?.content ?? [];
-      const tool_calls = content.filter((block) => block?.type === 'tool_use');
-      return tool_calls;
+    const content = entry.message?.content;
+    if (entry.role === 'assistant' && Array.isArray(content)) {
+      toolCalls.push(
+        ...content.filter((block) => block?.type === 'tool_use'),
+      );
     }
     if (isHumanPrompt(entry)) {
-      return [];
+      break;
     }
   }
-  return [];
+  return toolCalls;
 }
 
 function isHumanPrompt(entry) {
@@ -36,9 +39,6 @@ function isHumanPrompt(entry) {
   }
 
   const content = entry.message?.content;
-  if (typeof content === 'string') {
-    return true;
-  }
   return (
     Array.isArray(content) &&
     content.some((block) => block?.type === 'text')
