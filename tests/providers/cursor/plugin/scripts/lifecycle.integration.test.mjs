@@ -54,6 +54,93 @@ function writeExecutable(directory, name, contents) {
   chmodSync(executablePath, 0o755);
 }
 
+// Writes a Cursor-format JSONL transcript and returns its path.
+function writeTranscript(t, entries) {
+  const directory = mkdtempSync(join(tmpdir(), 'stripe-cursor-transcript-'));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const transcriptPath = join(directory, 'transcript.jsonl');
+  writeFileSync(
+    transcriptPath,
+    `${entries.map((entry) => JSON.stringify(entry)).join('\n')}\n`,
+    'utf8',
+  );
+  return transcriptPath;
+}
+
+function transcriptUserPrompt(text) {
+  return {
+    role: 'user',
+    message: {
+      content: [
+        {
+          type: 'text',
+          text: `<timestamp>Tuesday, Oct 13, 2026, 11:44 AM (UTC-4)</timestamp>\n<user_query>\n${text}\n</user_query>`,
+        },
+      ],
+    },
+  };
+}
+
+function transcriptAssistantReadingSkill(skillPath) {
+  return {
+    role: 'assistant',
+    message: {
+      content: [
+        { type: 'text', text: 'Reading the skill.\n\n[REDACTED]' },
+        { type: 'tool_use', name: 'Read', input: { file_path: skillPath } },
+      ],
+    },
+  };
+}
+
+const TRANSCRIPT_TURN_ENDED = { type: 'turn_ended', status: 'success' };
+
+function beforeSubmitPromptEvent(transcriptPath, prompt) {
+  return {
+    attachments: [],
+    conversation_id: 'conv_123',
+    hook_event_name: 'beforeSubmitPrompt',
+    prompt,
+    transcript_path: transcriptPath,
+  };
+}
+
+const USAGE_LOGGING_STRIPE_CLI = `#!/bin/sh
+printf '%s\\n' "$*" >> "$STRIPE_USAGE_LOG"
+echo "unsupported command"
+echo "unsupported command" >&2
+exit 1
+`;
+
+test('sampled beforeSubmitPrompt reports Stripe Skill usage from the last assistant message', (t) => {
+  const directory = createBinDirectory(t);
+  const usageLog = join(directory, 'usage.log');
+  writeExecutable(directory, 'stripe', USAGE_LOGGING_STRIPE_CLI);
+  const env = {
+    ...sampledPromptEnv,
+    PATH: `${directory}${delimiter}${process.env.PATH}`,
+    STRIPE_API_KEY: '',
+    STRIPE_USAGE_LOG: usageLog,
+  };
+
+  const stripeTranscript = writeTranscript(t, [
+    transcriptUserPrompt('Use the stripe-docs skill.'),
+    transcriptAssistantReadingSkill(STRIPE_SKILL_PATH),
+    TRANSCRIPT_TURN_ENDED,
+  ]);
+  const result = runLifecycle(
+    'lifecycle/beforeSubmitPrompt.mjs',
+    beforeSubmitPromptEvent(stripeTranscript, 'Now add a webhook handler.'),
+    env,
+  );
+  assertSilentHook(result);
+  assert.ok(existsSync(usageLog), 'Stripe CLI was not invoked');
+  assert.equal(
+    readFileSync(usageLog, 'utf8').trim(),
+    'agent report_usage --type skill --name stripe-docs',
+  );
+});
+
 test('feedback prompts provide direct, valid CLI guidance', () => {
   const messages = [
     AGENT_FEEDBACK_MESSAGE,
@@ -93,71 +180,6 @@ test('feedback prompts provide direct, valid CLI guidance', () => {
     TOOL_FAILURE_FEEDBACK_MESSAGE,
     /^The Stripe tool failed\. Send Stripe feedback/,
   );
-});
-
-test('Stripe Skill usage is reported with its short name and silent failures', (t) => {
-  const directory = createBinDirectory(t);
-  const usageLog = join(directory, 'usage.log');
-  writeExecutable(
-    directory,
-    'stripe',
-    `#!/bin/sh
-printf '%s\\n' "$*" >> "$STRIPE_USAGE_LOG"
-echo "unsupported command"
-echo "unsupported command" >&2
-exit 1
-`,
-  );
-
-  const result = runLifecycle(
-    'lifecycle/postToolUse.mjs',
-    {
-      hook_event_name: 'postToolUse',
-      tool_input: { file_path: STRIPE_SKILL_PATH },
-      tool_name: 'Read',
-      tool_output: JSON.stringify({ content: '# Stripe docs skill' }),
-      tool_use_id: 'tool_skill',
-    },
-    {
-      NODE_OPTIONS: `--import=data:text/javascript,${encodeURIComponent(
-        'Math.random = () => 0',
-      )}`,
-      PATH: `${directory}${delimiter}${process.env.PATH}`,
-      STRIPE_API_KEY: '',
-      STRIPE_USAGE_LOG: usageLog,
-    },
-  );
-
-  assert.ifError(result.error);
-  assert.equal(result.status, 0);
-  assert.equal(result.stderr, '');
-  assert.equal(result.stdout, '');
-  assert.ok(existsSync(usageLog), 'Stripe CLI was not invoked');
-  assert.equal(
-    readFileSync(usageLog, 'utf8').trim(),
-    'agent report_usage --type skill --name stripe-docs',
-  );
-
-  rmSync(usageLog);
-  const unrelated = runLifecycle(
-    'lifecycle/postToolUse.mjs',
-    {
-      hook_event_name: 'postToolUse',
-      tool_input: { file_path: OTHER_SKILL_PATH },
-      tool_name: 'Read',
-      tool_output: JSON.stringify({ content: '# Other skill' }),
-      tool_use_id: 'tool_other_skill',
-    },
-    {
-      PATH: `${directory}${delimiter}${process.env.PATH}`,
-      STRIPE_API_KEY: '',
-      STRIPE_USAGE_LOG: usageLog,
-    },
-  );
-  assert.ifError(unrelated.error);
-  assert.equal(unrelated.status, 0);
-  assert.equal(unrelated.stdout, '');
-  assert.ok(!existsSync(usageLog), 'A non-Stripe Skill was reported');
 });
 
 test('postToolUseFailure always asks about failed Stripe Skills', () => {

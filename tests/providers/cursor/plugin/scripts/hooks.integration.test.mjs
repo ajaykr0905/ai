@@ -117,8 +117,8 @@ describe('Stripe feedback hooks', { timeout: 120_000 }, () => {
         '--force',
         '--sandbox',
         'disabled',
-        'First use the stripe-docs skill. ' +
-          'Then launch a subagent whose task is to call one tool from the loaded Stripe MCP server to search Stripe documentation for Checkout. ' +
+        'Launch a subagent who uses the stripe-docs skill ' +
+          'and calls one tool from the loaded Stripe MCP server to search Stripe documentation for Checkout. ' +
           'Do not edit files and do not run the stripe CLI yourself. ' +
           'After both calls finish, reply with only DONE.',
       ],
@@ -178,9 +178,9 @@ describe('Stripe feedback hooks', { timeout: 120_000 }, () => {
     assert.ok(
       hookExecutions.some(
         (execution) =>
-          execution.hookStep === 'postToolUse' && execution.exitCode === 0,
+          execution.hookStep === 'beforePromptSubmit' && execution.exitCode === 0,
       ),
-      `The postToolUse hook did not report Stripe skill usage.\n${JSON.stringify(
+      `The beforePromptSubmit hook did not report Stripe skill usage.\n${JSON.stringify(
         hookExecutions,
       )}`,
     );

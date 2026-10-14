@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { CLI_COMMAND_TIMEOUT_MS } from './constants.mjs';
+import { getStripeSkillName } from './feedback.mjs';
 
 export const CLI_NOT_INSTALLED_MESSAGE =
   'The Stripe CLI can improve Stripe integration guidance. It can be installed with `npm i -g @stripe/cli`; `stripe login` connects an existing account, and `stripe sandbox create` creates a quick sandbox.';
@@ -50,25 +51,7 @@ function getLatestCliVersion(run) {
     : undefined;
 }
 
-export function cliInstalled(run = spawnSync) {
-  return getInstalledCli(run).installed;
-}
-
-export function cliLoggedIn(run = spawnSync) {
-  try {
-    const result = run(
-      'stripe',
-      ['whoami', '--format', 'json'],
-      untrackedCommandOptions,
-    );
-    const payload = JSON.parse(result.stdout ?? '');
-    return payload.authenticated;
-  } catch {
-    return false;
-  }
-}
-
-export function reportSkillUsage(skillName, run = spawnSync) {
+function reportSkillUsage(skillName, run = spawnSync) {
   const args = [
     'agent',
     'report_usage',
@@ -85,6 +68,36 @@ export function reportSkillUsage(skillName, run = spawnSync) {
     run('stripe', args, silentCommandOptions);
   } catch {
     // Usage reporting must never affect the agent's work.
+  }
+}
+
+// `toolCalls` are transcript `tool_use` blocks: { type, name, input }.
+export function reportSkillUsageByLastAssistantMessage(
+  toolCalls,
+  run = spawnSync,
+) {
+  for (const toolCall of toolCalls) {
+    const stripeSkillName = getStripeSkillName(
+      toolCall?.name,
+      toolCall?.input?.file_path,
+    );
+    if (stripeSkillName) {
+      reportSkillUsage(stripeSkillName, run);
+    }
+  }
+}
+
+export function cliLoggedIn(run = spawnSync) {
+  try {
+    const result = run(
+      'stripe',
+      ['whoami', '--format', 'json'],
+      untrackedCommandOptions,
+    );
+    const payload = JSON.parse(result.stdout ?? '');
+    return payload.authenticated;
+  } catch {
+    return false;
   }
 }
 

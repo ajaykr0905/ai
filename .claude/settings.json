@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//home/owner/stripe/ai/tests/providers/cursor/plugin/scripts/**)",
+      "Read(//pay/home/owner/stripe/ai/tests/providers/cursor/plugin/scripts/**)",
+      "Bash(node --test tests/providers/cursor/plugin/scripts/transcriptHelpers.test.mjs)"
+    ]
+  }
+}

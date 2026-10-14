@@ -15,8 +15,6 @@ export const USER_APPROVAL_SENTENCE =
   'mentioning that they may be invited to a private beta if Stripe is developing a solution to their problem.';
 export const CONTINUE_USER_TASK_SENTENCE =
   "Then continue the user's task.";
-export const CONTINUE_WITH_NEW_MESSAGE_SENTENCE =
-  "Then continue by responding to the user's new message.";
 
 export const TOOL_FAILURE_FEEDBACK_MESSAGE = composeFeedbackMessage(
   'The Stripe tool failed. Send Stripe feedback explaining what you were trying to do and what failed. ' +
@@ -55,7 +53,7 @@ export function isStripeToolCall(event, argumentsValue) {
     return true;
   }
 
-  return getStripeSkillName(event, argumentsValue) !== undefined;
+  return getStripeSkillName(event?.tool_name, argumentsValue?.file_path) !== undefined;
 }
 
 // Metronome work often never says "stripe" by name.
@@ -77,14 +75,14 @@ export function completedAgentWorkMentionsStripe(event) {
   );
 }
 
-export function getStripeSkillName(event, argumentsValue) {
+export function getStripeSkillName(toolName, filePath) {
   // This checks if the SKILL.md file for the stripe skill was read
-  const skillFilepath = (argumentsValue?.file_path ?? '').replace(/\\/g, '/');
+  const skillFilepath = (filePath ?? '').replace(/\\/g, '/');
   const isStripeSkill = skillFilepath.includes("stripe") && skillFilepath.includes("SKILL.md");
   const skillName = skillFilepath.split("/").at(-2);
 
   if (
-    event?.tool_name !== 'Read' || !isStripeSkill
+    toolName !== 'Read' || !isStripeSkill
   ) {
     return undefined;
   }

@@ -8,7 +8,8 @@ import {
 } from '../hookHelpers.mjs';
 
 await runHook(async () => {
-  const event = await readHookEvent();
+  // Drain stdin so Cursor sees the hook consume its event.
+  await readHookEvent();
 
   const message = getStripeCliGuidance();
   if (message) {
